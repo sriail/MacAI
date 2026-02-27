@@ -117,13 +117,13 @@ app.post('/api/chat', async (req, res) => {
   // Build system prompt based on mode
   const systemParts = ['You are MacAI, a highly capable AI assistant.'];
   if (doSearch) {
-    systemParts.push('You are in Search Mode. You MUST use the web_search tool to gather current, accurate information before answering. Always search before responding to ensure your answer is up-to-date. You may call web_search multiple times with different queries if needed to fully answer the question.');
+    systemParts.push('You are in Search Mode. You MUST use the web_search tool to gather current, accurate information before answering. Search thoroughly: collect 10–60 sources total depending on question complexity — use more searches for complex or multi-faceted questions. You may call web_search multiple times with different queries to fully cover the topic. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
   } else if (doFast) {
-    systemParts.push('You are in Fast Mode. Respond quickly and concisely. Only use the web_search tool if the question strictly requires real-time or very recent information that you cannot answer from training data.');
+    systemParts.push('You are in Fast Mode. Respond quickly and concisely. Only use the web_search tool if the question strictly requires real-time or very recent information that you cannot answer from training data. If you do search, use at most one query and collect 0–3 sources. Do not perform multiple searches. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
   } else if (doThink) {
-    systemParts.push('You are in Think Mode. Reason carefully and thoroughly before responding. Use the web_search tool when you need current or specific information to support your reasoning. Take your time to think through the problem deeply.');
+    systemParts.push('You are in Think Mode. Reason carefully and thoroughly before responding. Use the web_search tool when you need current or specific information to support your reasoning. Collect 20–50 sources total depending on question complexity — use multiple queries for thorough research on complex topics. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
   } else {
-    systemParts.push('Use the web_search tool when you need current information, recent events, or specific facts to give an accurate and helpful answer.');
+    systemParts.push('Use the web_search tool when you need current information, recent events, or specific facts to give an accurate and helpful answer. Collect 6–10 sources depending on question complexity. You may search multiple times with different queries if needed. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
   }
 
   const systemMessage = { role: 'system', content: systemParts.join('\n\n') };
@@ -194,7 +194,11 @@ app.post('/api/chat', async (req, res) => {
             let args;
             try { args = JSON.parse(call.function.arguments); } catch (_) { args = {}; }
             const query = args.query || '';
-            const resultCount = doFast ? 3 : doSearch ? 8 : 5;
+            let resultCount;
+            if (doFast)        resultCount = 3;
+            else if (doSearch) resultCount = 20;
+            else if (doThink)  resultCount = 25;
+            else               resultCount = 8;
             console.log(`⌕ web_search (${resultCount} results): "${query.slice(0, 80)}"`);
             const { results, error } = await searxngSearch(query, resultCount);
             if (results.length) allSources.push(...results);
@@ -213,8 +217,13 @@ app.post('/api/chat', async (req, res) => {
       }
 
       // No tool calls — final response
-      const reply = msg.content || '';
-      const thinking = msg.reasoning || null;
+      let reply = msg.content || '';
+      // Only expose thinking/reasoning when think mode is explicitly enabled.
+      // Also strip any stray <think> tags that the model may emit in non-think mode.
+      const thinking = doThink ? (msg.reasoning || null) : null;
+      if (!doThink) {
+        reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      }
       console.log(`✓ reply ${reply.length} chars${thinking ? ', reasoning ' + thinking.length + ' chars' : ''} sources:${allSources.length}`);
       return res.json({ reply, sources: allSources, thinking });
     }
