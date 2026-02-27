@@ -306,7 +306,7 @@ input[type=file]{display:none}
           </div>
           <div class="input-footer">
             <div>
-              <span class="model-pill"><i class="ti ti-bolt"></i>GPT OSS 120B</span>
+              <span class="model-pill"><i class="ti ti-bolt"></i>MacAI</span>
             </div>
             <div class="iactions">
               <button class="mode-btn think-btn" id="hThinkBtn" type="button" onclick="toggleMode('think')" title="Think mode — model reasons step by step"><i class="ti ti-brain"></i> Think</button>
@@ -335,7 +335,7 @@ input[type=file]{display:none}
   <div class="chat-topbar">
     <button class="back-btn" type="button" onclick="goHome()"><i class="ti ti-arrow-left"></i></button>
     <span class="chat-title-text" id="chatTitle">New chat</span>
-    <span class="model-badge" id="chatModelBadge">GPT OSS 120B</span>
+    <span class="model-badge" id="chatModelBadge" style="display:none"></span>
     <button class="icon-btn" id="statusBtn" type="button" onclick="toggleStatusPanel(event)" title="Activity log" style="display:none"><i class="ti ti-dots"></i></button>
     <div class="status-panel" id="statusPanel"></div>
   </div>
@@ -726,8 +726,7 @@ function renderRecent(){
   sec.style.display='block'; list.innerHTML='';
   chats.forEach(function(c){
     var card=document.createElement('div'); card.className='recent-card';
-    var ml=MODEL_LABELS[c.model]||c.model||'Unknown';
-    card.innerHTML='<div class="rc-icon"><i class="ti ti-message"></i></div><div class="rc-body"><div class="rc-title">'+esc(c.title)+'</div><div class="rc-meta"><span class="rc-model-badge">'+esc(ml)+'</span><span class="rc-time">'+timeAgo(c.ts)+'</span></div></div><i class="ti ti-chevron-right rc-arr"></i>';
+    card.innerHTML='<div class="rc-icon"><i class="ti ti-message"></i></div><div class="rc-body"><div class="rc-title">'+esc(c.title)+'</div><div class="rc-meta"><span class="rc-time">'+timeAgo(c.ts)+'</span></div></div><i class="ti ti-chevron-right rc-arr"></i>';
     card.onclick=function(){ loadChat(c.id); }; list.appendChild(card);
   });
 }
@@ -735,7 +734,7 @@ function renderRecent(){
 function loadChat(id){
   var c=getChat(id); if(!c) return;
   chatId=c.id; hist=c.messages.slice();
-  if(c.model){ selectedModel=c.model; document.getElementById('chatModelBadge').textContent=MODEL_LABELS[c.model]||c.model; }
+  if(c.model){ selectedModel=c.model; }
   document.getElementById('msgs').innerHTML='';
   document.getElementById('chatTitle').textContent=c.title;
   hist.forEach(function(m){
@@ -756,7 +755,6 @@ async function startChat(){
   var display=text+(fl?'\n\n📎 '+fl:'');
   var title=(text||fl).slice(0,54)+((text||fl).length>54?'…':'');
   document.getElementById('chatTitle').textContent=title;
-  document.getElementById('chatModelBadge').textContent=MODEL_LABELS[selectedModel]||selectedModel;
   var content=await buildUserContent(text,files.h);
   ta.value=''; ta.style.height='auto';
   files.h=[]; document.getElementById('hChips').innerHTML='';
@@ -817,22 +815,120 @@ async function callAPI(reloadTurnId){
   addTyping(steps);
   modeThink = savedModeThink;
   var t0 = Date.now();
+
+  // Streaming state
+  var accReply = '', accThinking = '', accSources = [], streamDoneMs = 0;
+  var streamWrapDiv = null, previewBubble = null, renderTimer = null;
+  var msgsEl = document.getElementById('msgs');
+
+  // For reload turns, reuse the existing wrapDiv for the streaming preview
+  if (reloadTurnId && turnData[reloadTurnId] && turnData[reloadTurnId].wrap) {
+    streamWrapDiv = turnData[reloadTurnId].wrap;
+    streamWrapDiv.innerHTML = '';
+    previewBubble = document.createElement('div'); previewBubble.className = 'bubble';
+    streamWrapDiv.appendChild(previewBubble);
+  }
+
+  function ensureStreamPreview() {
+    if (previewBubble) return;
+    removeTyping();
+    var row = document.createElement('div'); row.className = 'message ai';
+    var avDiv = document.createElement('div'); avDiv.className = 'avatar ai';
+    avDiv.innerHTML = '<i class="ti ti-bolt"></i>';
+    row.appendChild(avDiv);
+    streamWrapDiv = document.createElement('div'); streamWrapDiv.className = 'ai-msg-wrap';
+    streamWrapDiv.dataset.turnId = thisTurnId;
+    if (turnData[thisTurnId]) turnData[thisTurnId].wrap = streamWrapDiv;
+    previewBubble = document.createElement('div'); previewBubble.className = 'bubble';
+    streamWrapDiv.appendChild(previewBubble);
+    row.appendChild(streamWrapDiv);
+    msgsEl.appendChild(row);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  function schedulePreviewRender() {
+    if (renderTimer) return;
+    renderTimer = setTimeout(function() {
+      renderTimer = null;
+      if (!previewBubble) return;
+      previewBubble.innerHTML = '';
+      previewBubble.appendChild(renderMd(accReply));
+      if (msgsEl.scrollTop + msgsEl.clientHeight >= msgsEl.scrollHeight - 80)
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+    }, 60);
+  }
+
   try{
     var res=await fetch('/api/chat',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:apiMessages,search:doSearch,think:doThink,fast:doFast,noSearch:noSearch})
     });
-    var responseMs = Date.now() - t0;
-    removeTyping();
-    var data=await res.json();
+
     if(!res.ok){
-      addBubble('ai',data.error||('Error '+res.status),true,null,null,null,null);
+      // SSE not yet started — read as JSON error
+      var errData = await res.json().catch(function(){ return {}; });
+      removeTyping();
+      addBubble('ai',errData.error||('Error '+res.status),true,null,null,null,null);
+      if (!reloadTurnId) hist.pop();
+      busy=false;
+      document.getElementById('hSend').disabled=false;
+      document.getElementById('cSend').disabled=false;
+      document.getElementById('cInput').focus();
+      return;
+    }
+
+    // Parse SSE stream
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var sseBuf = '';
+    var streamError = null;
+
+    sseReadLoop: while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      sseBuf += decoder.decode(chunk.value, { stream: true });
+      var lines = sseBuf.split('\n');
+      sseBuf = lines.pop() || '';
+      for (var li = 0; li < lines.length; li++) {
+        var line = lines[li];
+        if (!line.startsWith('data: ')) continue;
+        var raw = line.slice(6).trim();
+        var evt;
+        try { evt = JSON.parse(raw); } catch(_){ console.warn('[SSE] JSON parse error:', raw.slice(0,80)); continue; }
+
+        if (evt.type === 'chunk') {
+          ensureStreamPreview();
+          accReply += evt.text;
+          schedulePreviewRender();
+        } else if (evt.type === 'search') {
+          var statusEl = document.getElementById('statusCurrentStep');
+          if (statusEl) statusEl.textContent = 'Searching: "' + (evt.query||'').slice(0,40) + '"…';
+        } else if (evt.type === 'thinking') {
+          accThinking = evt.text || '';
+        } else if (evt.type === 'sources') {
+          accSources = evt.data || [];
+        } else if (evt.type === 'done') {
+          streamDoneMs = evt.responseMs || 0;
+        } else if (evt.type === 'error') {
+          streamError = evt.message || 'Server error';
+          break sseReadLoop;
+        }
+      }
+    }
+    if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+
+    var responseMs = streamDoneMs || (Date.now() - t0);
+    removeTyping();
+
+    if (streamError) {
+      if (streamWrapDiv) { var errRow = streamWrapDiv.closest('.message'); if (errRow) errRow.remove(); }
+      addBubble('ai', streamError, true, null, null, null, null);
       if (!reloadTurnId) hist.pop();
     } else {
-      var sources = data.sources||[];
+      var sources = accSources;
       if (sources.length) lastSources = sources;
-      var parsed = extractThinking(data.reply, data.thinking||null);
+      var parsed = extractThinking(accReply, accThinking || null);
       var version = {reply:parsed.reply, sources:sources, thinking:parsed.thinking, responseMs:responseMs};
       turnVersions[thisTurnId].push(version);
       turnCurrentIdx[thisTurnId] = turnVersions[thisTurnId].length - 1;
@@ -843,15 +939,21 @@ async function callAPI(reloadTurnId){
       var sb2 = document.getElementById('statusBtn'); if (sb2) sb2.style.display='';
       if (reloadTurnId) {
         var tdRef = turnData[reloadTurnId];
-        if (tdRef && tdRef.wrap) { renderAiContent(tdRef.wrap, parsed.reply, sources, parsed.thinking, responseMs, reloadTurnId); document.getElementById('msgs').scrollTop=document.getElementById('msgs').scrollHeight; }
+        if (tdRef && tdRef.wrap) { renderAiContent(tdRef.wrap, parsed.reply, sources, parsed.thinking, responseMs, reloadTurnId); msgsEl.scrollTop=msgsEl.scrollHeight; }
       } else {
-        addBubble('ai', parsed.reply, false, sources, parsed.thinking, responseMs, thisTurnId);
+        // Finalize the streaming bubble in-place
+        if (streamWrapDiv) {
+          renderAiContent(streamWrapDiv, parsed.reply, sources, parsed.thinking, responseMs, thisTurnId);
+        } else {
+          addBubble('ai', parsed.reply, false, sources, parsed.thinking, responseMs, thisTurnId);
+        }
         hist.push({role:'assistant',content:parsed.reply,_sources:sources,_thinking:parsed.thinking,_responseMs:responseMs});
         var ex=getChat(chatId),t=ex?ex.title:'Chat';
         upsert(chatId,t,hist,selectedModel);
       }
     }
   }catch(err){
+    if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
     removeTyping();
     addBubble('ai','Could not reach server.\n\n'+err.message,true,null,null,null,null);
     if (!reloadTurnId) hist.pop();
