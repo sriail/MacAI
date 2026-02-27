@@ -1,0 +1,9 @@
+# SearXNG rate limiter – disabled for local use
+# This file disables rate limiting so the local instance
+# can serve unlimited search requests from MacAI.
+
+[botdetection.ip_limit]
+link_token = false
+
+[botdetection.ip_lists]
+pass_searxng_org = false

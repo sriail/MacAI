@@ -1,0 +1,22 @@
+# SearXNG settings – local instance for MacAI
+# Docs: https://docs.searxng.org/admin/settings/index.html
+
+use_default_settings: true
+
+server:
+  secret_key: "macai-local-searxng-key"
+  limiter: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Self Information'
+  - 'Tracker URL remover'
