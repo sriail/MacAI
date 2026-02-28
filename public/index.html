@@ -451,7 +451,7 @@ function parseThinkingSections(raw) {
     blocks.forEach(function(b, i) {
       b = b.trim();
       if (!b) return;
-      var labels = ['Planning','Reasoning','Analysis','Working Through','Conclusion'];
+      var labels = ['Planning','Idea','Evidence','Reasoning','Conclusion'];
       sections.push({ label: labels[i] || ('Step '+(i+1)), text: b });
     });
   }
@@ -562,6 +562,21 @@ function extractThinking(text, apiThinking) {
   var thinking = m[1].trim();
   var reply = text.replace(thinkRe, '').trim();
   return { thinking: thinking, reply: reply };
+}
+
+// ── Strip leaked tool-call JSON from AI replies ──
+function cleanReply(text) {
+  // Remove sequences of 2+ consecutive bare JSON objects that sometimes leak from tool calls.
+  // Use [^{}]* (no nested braces) to avoid backtracking on large inputs.
+  return text.replace(/(\{[^{}]*\}[ \t]*\n?){2,}/g, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// ── File icon helper ──
+function getFileIcon(name) {
+  var nl = name.toLowerCase();
+  if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(nl)) return 'ti-photo';
+  if (/\.pdf$/.test(nl)) return 'ti-file-type-pdf';
+  return 'ti-file-text';
 }
 
 // ── Markdown render with copy buttons ──
@@ -929,6 +944,7 @@ async function callAPI(reloadTurnId){
       var sources = accSources;
       if (sources.length) lastSources = sources;
       var parsed = extractThinking(accReply, accThinking || null);
+      parsed.reply = cleanReply(parsed.reply);
       var version = {reply:parsed.reply, sources:sources, thinking:parsed.thinking, responseMs:responseMs};
       turnVersions[thisTurnId].push(version);
       turnCurrentIdx[thisTurnId] = turnVersions[thisTurnId].length - 1;
@@ -1048,7 +1064,27 @@ function addBubble(role, text, isErr, sources, thinking, responseMs, turnId) {
   } else {
     var bDiv2=document.createElement('div');
     bDiv2.className='bubble plain'+(isErr?' err':'');
-    bDiv2.textContent=text;
+    var attachSep='\n\n📎 ';
+    var sepIdx=!isErr ? text.indexOf(attachSep) : -1;
+    if(sepIdx!==-1){
+      var textPart=text.slice(0,sepIdx);
+      var filesCsv=text.slice(sepIdx+attachSep.length);
+      if(textPart) bDiv2.textContent=textPart;
+      var chipsEl=document.createElement('div');
+      chipsEl.style.cssText='display:flex;flex-wrap:wrap;gap:6px'+(textPart?';margin-top:8px':'');
+      filesCsv.split(', ').forEach(function(name){
+        name=name.trim(); if(!name) return;
+        var chip=document.createElement('div'); chip.className='chip';
+        var iEl=document.createElement('i'); iEl.className='ti '+getFileIcon(name);
+        var span=document.createElement('span');
+        span.textContent=name.length>26?name.slice(0,25)+'…':name;
+        chip.appendChild(iEl); chip.appendChild(span);
+        chipsEl.appendChild(chip);
+      });
+      bDiv2.appendChild(chipsEl);
+    } else {
+      bDiv2.textContent=text;
+    }
     row.appendChild(bDiv2);
   }
   wrap.appendChild(row); wrap.scrollTop=wrap.scrollHeight;
