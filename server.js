@@ -108,7 +108,7 @@ async function* parseSSEStream(response) {
 }
 
 // ── Web search tool definition ──
-const MAX_TOOL_CALL_TURNS = 6;
+const MAX_TOOL_CALL_TURNS = 10;
 const WEB_SEARCH_TOOL = {
   type: 'function',
   function: {
@@ -157,7 +157,7 @@ app.post('/api/chat', async (req, res) => {
   } else if (doThink) {
     systemParts.push('You are in Think Mode. Reason carefully and thoroughly before responding. Use the web_search tool when you need current or specific information to support your reasoning. Collect 20–50 sources total depending on question complexity — use multiple queries for thorough research on complex topics. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
   } else {
-    systemParts.push('Use the web_search tool when you need current information, recent events, or specific facts to give an accurate and helpful answer. Collect 6–10 sources depending on question complexity. You may search multiple times with different queries if needed. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
+    systemParts.push('Use the web_search tool when you need current information, recent events, or specific facts to give an accurate and helpful answer. Typically 3–6 searches are sufficient; use more only when the question is genuinely complex or multi-faceted. After gathering enough information, ALWAYS provide a complete answer to the user — do NOT stop after searching without responding. Do NOT list or cite your sources at the end of your response; the sources are already displayed automatically below your message.');
   }
 
   const systemMessage = { role: 'system', content: systemParts.join('\n\n') };
@@ -185,7 +185,9 @@ app.post('/api/chat', async (req, res) => {
       // Attach tools unless search is disabled
       if (!noSearch) {
         requestBody.tools = [WEB_SEARCH_TOOL];
-        requestBody.tool_choice = toolChoice;
+        // On the final allowed turn, force a text response so the model cannot
+        // exhaust all turns with searches and leave the user without an answer.
+        requestBody.tool_choice = (turn === MAX_TOOL_CALL_TURNS - 1) ? 'none' : toolChoice;
       }
 
       // Enable reasoning for think mode
