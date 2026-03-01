@@ -656,14 +656,15 @@ function buildSourcesBubble(sources) {
     });
   });
   hdr.appendChild(copyBtn);
-  var list = document.createElement('div'); list.className = 'sources-list hidden';
+  var list = document.createElement('div'); list.className = 'sources-list';
   sources.forEach(function(s, i) {
     var item = document.createElement('div'); item.className = 'source-item';
     var domain = ''; try { domain = new URL(s.url).hostname.replace(/^www\./,''); } catch(e){ domain=s.url; }
     item.innerHTML = '<span class="source-num">['+(i+1)+']</span><div class="source-body"><div class="source-title">'+esc(s.title||domain)+'</div><a class="source-url" href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.url)+'</a></div>';
     list.appendChild(item);
   });
-  var chev = hdr.querySelector('.chev'); var open = false;
+  var chev = hdr.querySelector('.chev'); var open = true;
+  if (chev) chev.classList.add('open');
   hdr.addEventListener('click', function(e){ if(e.target===copyBtn||copyBtn.contains(e.target)) return; open=!open; list.classList.toggle('hidden',!open); if(chev) chev.classList.toggle('open',open); });
   box.appendChild(hdr); box.appendChild(list);
   return box;
