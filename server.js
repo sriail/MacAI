@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 
 const __dirname    = path.dirname(fileURLToPath(import.meta.url));
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY || '';
@@ -27,7 +27,14 @@ app.use(express.json({ limit: '4mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── SearXNG search (local instance, no API key needed) ──
-const SEARXNG_URL = process.env.SEARXNG_URL || 'http://localhost:8888';
+// Auto-detect URL: explicit env var > Docker service name (when inside container) > localhost
+function resolveSearXNGUrl() {
+  if (process.env.SEARXNG_URL) return process.env.SEARXNG_URL;
+  // Inside a Docker container: /.dockerenv exists, or DOCKER_ENV is set via docker-compose
+  if (existsSync('/.dockerenv') || process.env.DOCKER_ENV) return 'http://searxng:8080';
+  return 'http://localhost:8888';
+}
+const SEARXNG_URL = resolveSearXNGUrl();
 
 app.get('/ping', (req, res) => res.json({ ok: true }));
 
@@ -75,9 +82,9 @@ async function searxngSearch(query, count = 5) {
   } catch (err) {
     console.warn('SearXNG search error:', err.message);
     if (err.name === 'AbortError') {
-      console.warn('  → Request timed out. Is SearXNG running? Check: docker compose up -d');
+      console.warn('  → Request timed out. Is SearXNG running?');
     } else if (err.cause?.code === 'ECONNREFUSED') {
-      console.warn(`  → Connection refused at ${SEARXNG_URL}. Start SearXNG: docker compose up -d`);
+      console.warn(`  → Connection refused at ${SEARXNG_URL}. Ensure SearXNG is running.`);
     }
     return { results: [], error: err.message };
   }
@@ -333,6 +340,6 @@ app.listen(PORT, async () => {
     if (resp.ok) console.log(`✓ SearXNG reachable at ${SEARXNG_URL}`);
     else console.warn(`⚠  SearXNG returned HTTP ${resp.status} at ${SEARXNG_URL}`);
   } catch (_) {
-    console.warn(`⚠  SearXNG not reachable at ${SEARXNG_URL} — run: docker compose up -d`);
+    console.warn(`⚠  SearXNG not reachable at ${SEARXNG_URL} — ensure SearXNG is running (docker compose up -d, or set SEARXNG_URL)`);
   }
 });
