@@ -10,3 +10,18 @@ services:
     environment:
       - SEARXNG_BASE_URL=http://localhost:8888/
     restart: unless-stopped
+
+  app:
+    build: .
+    container_name: macai-app
+    ports:
+      - "3000:3000"
+    environment:
+      - SEARXNG_URL=http://searxng:8080
+      - DOCKER_ENV=true
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      - searxng
+    restart: unless-stopped
