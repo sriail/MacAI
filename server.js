@@ -337,6 +337,7 @@ app.listen(PORT, async () => {
         break;
       }
       console.warn(`⚠  SearXNG returned HTTP ${resp.status} at ${SEARXNG_URL}`);
+      break;
     } catch (_) {
       if (attempt < maxRetries) {
         console.warn(`⚠  SearXNG not reachable at ${SEARXNG_URL} (attempt ${attempt}/${maxRetries}), retrying in 3s…`);
