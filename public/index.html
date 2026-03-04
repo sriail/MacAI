@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MacAI</title>
+<link rel="icon" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
@@ -60,7 +61,7 @@ body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);heig
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .home-brand{display:flex;flex-direction:column;align-items:center;gap:12px}
-.home-bolt{width:54px;height:54px;border-radius:14px;background:var(--teal-dim);border:1px solid rgba(0,201,106,.18);display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--teal)}
+.home-bolt{width:80px;height:80px;border-radius:18px;background:var(--teal-dim);border:1px solid rgba(0,201,106,.18);display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--teal);overflow:hidden;padding:8px}.home-bolt img{width:100%;height:100%;object-fit:contain}
 .home-brand h1{font-size:26px;font-weight:300;letter-spacing:.06em}
 .home-brand p{font-size:13px;color:var(--muted)}
 
@@ -90,7 +91,7 @@ body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);heig
 .message{display:flex;gap:12px;align-items:flex-start;animation:fadeUp .2s ease;max-width:760px;width:100%;margin:0 auto}
 .message.user{flex-direction:row-reverse}
 .avatar{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-top:2px}
-.avatar.ai{background:rgba(255,255,255,.06);color:var(--text)}
+.avatar.ai{background:rgba(255,255,255,.06);color:var(--text);overflow:hidden;padding:2px}.avatar.ai img{width:100%;height:100%;object-fit:contain;border-radius:5px}
 .avatar.user{background:var(--teal-dim);color:var(--teal)}
 .ai-msg-wrap{display:flex;flex-direction:column;gap:8px;max-width:calc(100% - 60px);min-width:0}
 
@@ -295,7 +296,7 @@ input[type=file]{display:none}
   <div class="home-content">
     <div class="home-wrap">
       <div class="home-brand">
-        <div class="home-bolt"><i class="ti ti-bolt"></i></div>
+        <div class="home-bolt"><img src="/logo.png" alt="MacAI logo"></div>
         <h1>MacAI</h1>
         <p>Your AI assistant</p>
       </div>
@@ -512,7 +513,7 @@ function addTyping(steps) {
   if (modeThink) {
     thinkStartTime = Date.now();
     row.innerHTML =
-      '<div class="avatar ai"><i class="ti ti-bolt"></i></div>'+
+      '<div class="avatar ai"><img src="/chatbot_default.png" alt="AI"></div>'+
       '<div class="ai-msg-wrap">'+
         '<div class="think-waiting">'+
           '<div class="think-waiting-dots"><span></span><span></span><span></span></div>'+
@@ -526,7 +527,7 @@ function addTyping(steps) {
       if (el) el.textContent = formatDuration(Date.now() - thinkStartTime);
     }, 100);
   } else {
-    row.innerHTML = '<div class="avatar ai"><i class="ti ti-bolt"></i></div>'+
+    row.innerHTML = '<div class="avatar ai"><img src="/chatbot_default.png" alt="AI"></div>'+
       '<div class="ai-msg-wrap">'+
         '<div class="bubble tdots"><span></span><span></span><span></span></div>'+
         (firstStep ? '<div class="status-indicator-text" id="statusCurrentStep">'+esc(firstStep)+'</div>' : '')+
@@ -849,7 +850,7 @@ async function callAPI(reloadTurnId){
     removeTyping();
     var row = document.createElement('div'); row.className = 'message ai';
     var avDiv = document.createElement('div'); avDiv.className = 'avatar ai';
-    avDiv.innerHTML = '<i class="ti ti-bolt"></i>';
+    avDiv.innerHTML = '<img src="/chatbot_default.png" alt="AI">';
     row.appendChild(avDiv);
     streamWrapDiv = document.createElement('div'); streamWrapDiv.className = 'ai-msg-wrap';
     streamWrapDiv.dataset.turnId = thisTurnId;
@@ -1053,7 +1054,7 @@ function addBubble(role, text, isErr, sources, thinking, responseMs, turnId) {
   var wrap=document.getElementById('msgs');
   var row=document.createElement('div'); row.className='message '+role;
   var avDiv=document.createElement('div'); avDiv.className='avatar '+role;
-  avDiv.innerHTML='<i class="ti '+(role==='ai'?'ti-bolt':'ti-user')+'"></i>';
+  avDiv.innerHTML=role==='ai'?'<img src="/chatbot_default.png" alt="AI">':'<i class="ti ti-user"></i>';
   row.appendChild(avDiv);
 
   if(role==='ai'&&!isErr){
