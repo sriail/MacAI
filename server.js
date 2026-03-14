@@ -324,15 +324,27 @@ app.listen(PORT, async () => {
   console.log(`✓ http://localhost:${PORT}`);
   if (!CEREBRAS_KEY_RESOLVED) console.warn('⚠  CEREBRAS_API_KEY not set');
 
-  // Check SearXNG connectivity on startup
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
-    const resp = await fetch(`${SEARXNG_URL}/healthz`, { signal: ctrl.signal });
-    clearTimeout(timer);
-    if (resp.ok) console.log(`✓ SearXNG reachable at ${SEARXNG_URL}`);
-    else console.warn(`⚠  SearXNG returned HTTP ${resp.status} at ${SEARXNG_URL}`);
-  } catch (_) {
-    console.warn(`⚠  SearXNG not reachable at ${SEARXNG_URL} — run: docker compose up -d`);
+  // Check SearXNG connectivity on startup (retry up to 5 times for Docker cold-start)
+  const maxRetries = 5;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const resp = await fetch(`${SEARXNG_URL}/healthz`, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (resp.ok) {
+        console.log(`✓ SearXNG reachable at ${SEARXNG_URL}`);
+        break;
+      }
+      console.warn(`⚠  SearXNG returned HTTP ${resp.status} at ${SEARXNG_URL}`);
+      break;
+    } catch (_) {
+      if (attempt < maxRetries) {
+        console.warn(`⚠  SearXNG not reachable at ${SEARXNG_URL} (attempt ${attempt}/${maxRetries}), retrying in 3s…`);
+        await new Promise(r => setTimeout(r, 3000));
+      } else {
+        console.warn(`⚠  SearXNG not reachable at ${SEARXNG_URL} after ${maxRetries} attempts — run: docker compose up -d`);
+      }
+    }
   }
 });
